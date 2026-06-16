@@ -1,67 +1,87 @@
 """
 メール送信機能（Resend API版・HTTPS経由なのでRender制限を回避）
+
+ユーザーへの診断PDF送信＋管理者（サラさん）への通知メールを同時に走らせる。
+女性版と同じ動作を、男性版「45歳からの 信頼される男 診断」のブランドで実現する。
+
 環境変数：
-  RESEND_API_KEY    Resend ダッシュボードで発行したAPIキー
-  FROM_EMAIL        送信元（独自ドメイン認証前は onboarding@resend.dev）
-  FROM_NAME         サラグラシアアカデミー
+  RESEND_API_KEY     Resend ダッシュボードで発行したAPIキー
+  FROM_EMAIL         送信元（独自ドメイン認証前は onboarding@resend.dev）
+  FROM_NAME          送信者名（デフォルト：信頼される男の流儀）
+  ADMIN_EMAIL        サラさんの管理者メール（デフォルト：monthly@salagracia.com）
+  ADMIN_FROM_EMAIL   管理者通知の送信元（指定しなければ FROM_EMAIL を使う）
 """
 import os
 import base64
 from datetime import datetime
 
 
+# 男性版ブランド配色（PDF/Streamlit と揃える）
+BRAND_NAVY = "#1E2A47"
+BRAND_COPPER = "#B85C38"
+BRAND_LIGHT = "#ECEFF4"
+
+
 def send_admin_notification(user_data: dict, result: dict, pdf_path: str) -> dict:
-    """管理者（サラさん）への診断完了通知＋データベース記録用メール
-    monthly@salagracia.com に「リスト追加」メールを送信
-    Gmail で検索可能なリストとして蓄積する
+    """管理者（サラさん）への診断完了通知メール。
+
+    LINE登録者がフォームで送信するたびに、サラさんの monthly@salagracia.com
+    にも同じPDFが届く。Gmailで「信頼される男リスト」で検索すると一覧化できる。
     """
     import resend
-    api_key = os.environ.get('RESEND_API_KEY', '')
-    # 管理者通知は確実に届けるため、検証済みドメインの from を優先
-    from_email = os.environ.get('ADMIN_FROM_EMAIL', os.environ.get('FROM_EMAIL', 'onboarding@resend.dev'))
-    admin_email = os.environ.get('ADMIN_EMAIL', 'monthly@salagracia.com')
+    api_key = os.environ.get("RESEND_API_KEY", "")
+    from_email = os.environ.get(
+        "ADMIN_FROM_EMAIL",
+        os.environ.get("FROM_EMAIL", "onboarding@resend.dev"),
+    )
+    admin_email = os.environ.get("ADMIN_EMAIL", "monthly@salagracia.com")
 
     if not api_key:
         return {"success": False, "message": "RESEND_API_KEY未設定"}
 
     resend.api_key = api_key
 
-    kaika = result.get('jinsei_kaika') or result.get('personality', {}).get('jinsei_kaika', {})
-    ws = result.get('western_astrology', {})
-    doubutsu = result.get('doubutsu', {})
-    shusei = result.get('shusei', {})
-    seimei = result.get('seimei', {})
-    teiou = result.get('teiou', {})
-    sp = result.get('shichuusuimei', {})
-    n = result.get('numerology', {})
+    kaika = result.get("jinsei_kaika") or result.get("personality", {}).get("jinsei_kaika", {})
+    ws = result.get("western_astrology", {})
+    doubutsu = result.get("doubutsu", {})
+    shusei = result.get("shusei", {})
+    seimei = result.get("seimei", {})
+    teiou = result.get("teiou", {})
+    sp = result.get("shichuusuimei", {})
+    n = result.get("numerology", {})
 
-    user_name = user_data.get('name', '不明')
-    user_email = user_data.get('email_to', user_data.get('email', '不明'))
-    birth = user_data.get('birth_date', '不明')
+    user_name = user_data.get("name", "不明")
+    user_email = user_data.get("email_to", user_data.get("email", "不明"))
+    birth = user_data.get("birth_date", "不明")
+    narrative = user_data.get("narrative", {}) or {}
 
-    subject = f"【人生開花リスト追加】{user_name}さん｜{kaika.get('name', '?')}×{kaika.get('second_name', '?')}"
+    subject = (
+        f"【信頼される男リスト追加】{user_name}さん｜"
+        f"{kaika.get('name', '?')}×{kaika.get('second_name', '?')}"
+    )
 
     html_body = f"""
 <!DOCTYPE html>
 <html><body style="font-family: sans-serif; max-width: 600px;">
 
-<h2 style="color: #8B4789;">📊 新規診断レコード</h2>
+<h2 style="color: {BRAND_NAVY};">📊 新規診断レコード（45歳からの 信頼される男 診断）</h2>
 
 <table border="1" cellpadding="8" style="border-collapse: collapse; width: 100%;">
-  <tr style="background: #F4ECF7;"><td><b>氏名</b></td><td>{user_name}</td></tr>
+  <tr style="background: {BRAND_LIGHT};"><td><b>氏名</b></td><td>{user_name}</td></tr>
   <tr><td><b>メール</b></td><td>{user_email}</td></tr>
-  <tr style="background: #F4ECF7;"><td><b>生年月日</b></td><td>{birth}</td></tr>
+  <tr style="background: {BRAND_LIGHT};"><td><b>生年月日</b></td><td>{birth}</td></tr>
   <tr><td><b>出生地</b></td><td>{user_data.get('birth_place', '不明')}</td></tr>
-  <tr style="background: #F4ECF7;"><td><b>診断日</b></td><td>{datetime.now().strftime('%Y-%m-%d %H:%M')}</td></tr>
+  <tr style="background: {BRAND_LIGHT};"><td><b>診断日</b></td><td>{datetime.now().strftime('%Y-%m-%d %H:%M')}</td></tr>
 </table>
 
-<h3 style="color: #8B4789;">🌸 人生開花タイプ</h3>
+<h3 style="color: {BRAND_NAVY};">🛡️ 信頼される男タイプ</h3>
 <ul>
-  <li><b>メイン：{kaika.get('name', '?')}</b>（{kaika.get('tagline', '')}）— {kaika.get('score', 0)}/24点</li>
-  <li><b>隠れ才能：{kaika.get('second_name', '?')}</b>（{kaika.get('second_tagline', '')}）— {kaika.get('second_score', 0)}/24点</li>
+  <li><b>メイン：{kaika.get('name', '?')}</b>（{kaika.get('tagline', '')}）— 総合 {round(kaika.get('score', 0), 1)} 点</li>
+  <li><b>隠れタイプ：{kaika.get('second_name', '?')}</b>（{kaika.get('second_tagline', '')}）— 総合 {round(kaika.get('second_score', 0), 1)} 点</li>
+  <li style="color: #666; font-size: 0.9em;">妻からの見え方：{kaika.get('wife_view', '')}</li>
 </ul>
 
-<h3 style="color: #8B4789;">🔮 占術データ</h3>
+<h3 style="color: {BRAND_NAVY};">🔮 占術データ</h3>
 <table border="1" cellpadding="6" style="border-collapse: collapse; font-size: 0.9em;">
   <tr><td>太陽星座</td><td>{ws.get('sun', {}).get('name', '')}</td></tr>
   <tr><td>月星座</td><td>{ws.get('moon', {}).get('name', '')}</td></tr>
@@ -74,31 +94,32 @@ def send_admin_notification(user_data: dict, result: dict, pdf_path: str) -> dic
   <tr><td>ライフパス</td><td>{n.get('life_path', {}).get('number', '')}</td></tr>
 </table>
 
-<h3 style="color: #8B4789;">📝 自由記述</h3>
-<p style="background: #f9f9f9; padding: 10px;"><b>夢中体験：</b><br>{user_data.get('narrative', {}).get('N1', '記入なし')}</p>
-<p style="background: #f9f9f9; padding: 10px;"><b>譲れない信念：</b><br>{user_data.get('narrative', {}).get('N2', '記入なし')}</p>
+<h3 style="color: {BRAND_NAVY};">📝 自由記述（4問）</h3>
+<p style="background: #f9f9f9; padding: 10px;"><b>N1. 仕事の没頭体験：</b><br>{narrative.get('N1', '記入なし')}</p>
+<p style="background: #f9f9f9; padding: 10px;"><b>N2. 譲れない信念：</b><br>{narrative.get('N2', '記入なし')}</p>
+<p style="background: #f9f9f9; padding: 10px;"><b>N3. 妻への本音：</b><br>{narrative.get('N3', '記入なし')}</p>
+<p style="background: #f9f9f9; padding: 10px;"><b>N4. 空回りの正体：</b><br>{narrative.get('N4', '記入なし')}</p>
 
 <hr>
 <p style="color: #888; font-size: 0.85em;">
 このメールは管理者向け自動送信です。<br>
-Gmail で「人生開花リスト」「{kaika.get('name', '')}」などで検索すると関連レコードが取り出せます。
+Gmail で「信頼される男リスト」「{kaika.get('name', '')}」などで検索すると関連レコードが取り出せます。
 </p>
 
 </body></html>
 """
 
     try:
-        # PDF添付
-        with open(pdf_path, 'rb') as f:
+        with open(pdf_path, "rb") as f:
             pdf_b64 = base64.b64encode(f.read()).decode()
 
         params = {
-            "from": f"サラグラシアアカデミー <{from_email}>",
+            "from": f"信頼される男の流儀 <{from_email}>",
             "to": [admin_email],
             "subject": subject,
             "html": html_body,
             "attachments": [{
-                "filename": f"診断_{user_name}.pdf",
+                "filename": f"信頼される男診断_{user_name}.pdf",
                 "content": pdf_b64,
             }],
         }
@@ -109,83 +130,77 @@ Gmail で「人生開花リスト」「{kaika.get('name', '')}」などで検索
 
 
 def send_pdf_email(to_email: str, user_name: str, pdf_path: str) -> dict:
-    """PDF添付メールを Resend API 経由で送信"""
-    api_key = os.environ.get('RESEND_API_KEY', '')
-    from_email = os.environ.get('FROM_EMAIL', 'onboarding@resend.dev')
-    from_name = os.environ.get('FROM_NAME', 'サラグラシアアカデミー')
+    """ユーザー向け：診断PDFをResend API経由でメール送信する。"""
+    api_key = os.environ.get("RESEND_API_KEY", "")
+    from_email = os.environ.get("FROM_EMAIL", "onboarding@resend.dev")
+    from_name = os.environ.get("FROM_NAME", "信頼される男の流儀")
 
     if not api_key:
         return {
             "success": False,
-            "message": "メール送信の設定が不完全です（API Key未登録）"
+            "message": "メール送信の設定が不完全です（API Key未登録）",
         }
 
     try:
         import resend
     except ImportError:
-        return {
-            "success": False,
-            "message": "Resendパッケージが見つかりません"
-        }
+        return {"success": False, "message": "Resendパッケージが見つかりません"}
 
     resend.api_key = api_key
 
-    # PDF をbase64エンコード
     try:
-        with open(pdf_path, 'rb') as f:
-            pdf_b64 = base64.b64encode(f.read()).decode('utf-8')
+        with open(pdf_path, "rb") as f:
+            pdf_b64 = base64.b64encode(f.read()).decode("utf-8")
     except Exception as e:
         return {"success": False, "message": f"PDF読み込みエラー: {e}"}
 
-    # メール本文
     html_body = f"""
 <div style="font-family: 'Hiragino Sans', 'Yu Gothic', sans-serif; max-width: 600px; margin: auto;">
-  <h2 style="color: #8B4789;">🌹 人生開花タイプ診断レポートが完成しました</h2>
+  <h2 style="color: {BRAND_NAVY};">🛡️ 45歳からの 信頼される男 診断 — レポート完成</h2>
   <p>{user_name} さん</p>
-  <p>この度は人生開花タイプ診断を受けてくださり、本当にありがとうございます。</p>
-  <p>あなたの「<strong>人生再起動のための個人設計図</strong>」が完成しました。</p>
+  <p>診断を受けてくれて、ありがとう。</p>
+  <p>あなただけの「<strong>人生後半を立て直すための個人設計図</strong>」が完成しました。</p>
   <p>📎 添付ファイルからPDFをご確認ください。</p>
 
-  <hr style="border: 1px solid #F4ECF7;">
+  <hr style="border: 1px solid {BRAND_LIGHT};">
 
   <p><strong>このレポートには：</strong></p>
   <ul>
     <li>東洋・西洋の占術8種類の結果（数秘・西洋占星術・九星気学・四柱推命・動物キャラ・算命学・帝王学・姓名判断）</li>
-    <li><strong>サラグラシア独自・人生開花タイプ診断</strong>（あなたのメインタイプ）</li>
-    <li><strong>あなたの中に眠る「隠れ才能タイプ」</strong>（意識すると開花する内側の才能）</li>
-    <li>あなたの言葉が映す本質（自由記述から読み解く深層）</li>
-    <li>大切な人との相性・天中殺・3年間の運勢サイクル</li>
-    <li>山岡サラからの手紙</li>
+    <li><strong>信頼される男タイプ診断</strong>（あなたのメインタイプ＋隠れタイプ）</li>
+    <li><strong>第2章：仕事での強みを認める章</strong></li>
+    <li><strong>第6章：同じ強みが、家庭で裏目に出ている構造</strong>（このレポートの核）</li>
+    <li>これからの3年で人生をどう立て直すか</li>
+    <li>あなたの自由記述から見える、空回りの正体</li>
+    <li>巻末：兄貴分からの手紙＋次の一歩（60分・3,000円個別相談）</li>
   </ul>
-  <p>…が、11ページにわたって描かれています。</p>
+  <p>…が、約24ページにわたって書かれています。</p>
 
-  <hr style="border: 1px solid #F4ECF7;">
+  <hr style="border: 1px solid {BRAND_LIGHT};">
 
-  <p style="color: #8B4789; font-weight: bold; font-size: 1.1em;">
-    『人生は、何度でも再起動できる』
+  <p style="color: {BRAND_NAVY}; font-weight: bold; font-size: 1.1em;">
+    『一番近い人に信頼される男が、外でも信頼される』
   </p>
-  <p>あなたの再起動の旅を、応援しています🌹</p>
+  <p>もう遅い、なんてことはない。順番を整え直せばいい。それだけです。</p>
 
   <p>
-    山岡サラ（サラグラシアアカデミー）<br>
-    🎬 YouTubeチャンネル「脳をだまして若返る」<br>
-    <a href="https://www.youtube.com/@agelessJP" style="color: #8B4789;">https://www.youtube.com/@agelessJP</a><br>
-    <span style="color: #888; font-size: 0.9em;">（登録者12,500人・50代女性のための若返り×ライフスタイル動画）</span>
+    YouTube「<b>信頼される男の流儀</b>」<br>
+    <span style="color: #888; font-size: 0.9em;">45歳からの人生再構築・仕事と家庭の両方を伸ばす男の流儀</span>
   </p>
 
   <hr style="border: 1px solid #ccc;">
   <p style="color: #888; font-size: 0.85em;">
     ※ このメールは自動送信です<br>
-    ※ 人生開花タイプ診断：<a href="https://dna-shindan-sara.onrender.com">https://dna-shindan-sara.onrender.com</a>
+    ※ ご質問・ご相談は登録LINEまでどうぞ
   </p>
 </div>
 """
 
     text_body = f"""{user_name} さん
 
-この度は人生開花タイプ診断を受けてくださり、本当にありがとうございます。
+診断を受けてくれて、ありがとう。
 
-あなたの「人生再起動のための個人設計図」が完成しました。
+あなただけの「人生後半を立て直すための個人設計図」が完成しました。
 📎 添付ファイルからPDFをご確認ください。
 
 ────────────────
@@ -193,47 +208,43 @@ def send_pdf_email(to_email: str, user_name: str, pdf_path: str) -> dict:
 このレポートには：
 ・東洋・西洋の占術8種類の結果
   （数秘・西洋占星術・九星気学・四柱推命・動物キャラ・算命学・帝王学・姓名判断）
-・サラグラシア独自「人生開花タイプ診断」（あなたのメインタイプ）
-・あなたの中に眠る「隠れ才能タイプ」
-・あなたの言葉が映す本質（自由記述から読み解く深層）
-・大切な人との相性・天中殺・3年間の運勢サイクル
-・山岡サラからの手紙
+・信頼される男タイプ診断（あなたのメインタイプ＋隠れタイプ）
+・第2章：仕事での強みを認める章
+・第6章：同じ強みが、家庭で裏目に出ている構造（このレポートの核）
+・これからの3年で人生をどう立て直すか
+・あなたの自由記述から見える、空回りの正体
+・巻末：兄貴分からの手紙＋次の一歩（60分・3,000円個別相談）
 
-…が、11ページにわたって描かれています。
+…が、約24ページにわたって書かれています。
 
 ────────────────
 
-『人生は、何度でも再起動できる』
+『一番近い人に信頼される男が、外でも信頼される』
 
-あなたの再起動の旅を、応援しています🌹
+もう遅い、なんてことはない。
+順番を整え直せばいい。それだけです。
 
-山岡サラ
-サラグラシアアカデミー
-
-🎬 YouTubeチャンネル「脳をだまして若返る」
-https://www.youtube.com/@agelessJP
-（登録者12,500人・50代女性のための若返り×ライフスタイル動画）
+YouTube「信頼される男の流儀」
+45歳からの人生再構築・仕事と家庭の両方を伸ばす男の流儀
 """
 
     try:
         params = {
             "from": f"{from_name} <{from_email}>",
             "to": [to_email],
-            "subject": "【人生開花タイプ診断】あなたのレポートが完成しました 🌹",
+            "subject": "【45歳からの 信頼される男 診断】あなたのレポートが完成しました 🛡️",
             "html": html_body,
             "text": text_body,
-            "attachments": [
-                {
-                    "filename": f"人生開花タイプ診断_{user_name}.pdf",
-                    "content": pdf_b64,
-                }
-            ]
+            "attachments": [{
+                "filename": f"信頼される男診断_{user_name}.pdf",
+                "content": pdf_b64,
+            }],
         }
         result = resend.Emails.send(params)
         return {
             "success": True,
             "message": f"{to_email} にメールを送信しました",
-            "id": result.get('id', '')
+            "id": result.get("id", ""),
         }
     except Exception as e:
         return {"success": False, "message": f"メール送信失敗: {e}"}
